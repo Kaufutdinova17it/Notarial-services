@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Система для клиентов нотариальной конторы">
+    <title>Нотариус — цифровая контора</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="auth-view" class="auth-view">
+    <section class="auth-brand">
+        <div class="brand brand-light">
+            <span class="brand-mark">Н</span>
+            <span>Нотариус<span class="brand-dot">.</span></span>
+        </div>
+        <div class="auth-brand-content">
+            <span class="eyebrow light">Цифровая нотариальная контора</span>
+            <h1>Важные документы.<br>Простой процесс.</h1>
+            <p>Подавайте заявки, отслеживайте работу нотариуса и получайте готовые документы в одном кабинете.</p>
+            <div class="auth-features">
+                <div><span>01</span><p>Заявки и документы<br><small>Вся история в одном месте</small></p></div>
+                <div><span>02</span><p>Прозрачные статусы<br><small>Уведомления на каждом этапе</small></p></div>
+                <div><span>03</span><p>Онлайн-оплата<br><small>Без посещения офиса</small></p></div>
+            </div>
+        </div>
+        <p class="auth-brand-footer">Надёжно. Конфиденциально. По архитектурному плану.</p>
+    </section>
+    <section class="auth-panel">
+        <div class="auth-box">
+            <div class="auth-mobile-brand brand"><span class="brand-mark">Н</span><span>Нотариус.</span></div>
+            <span class="eyebrow">Личный кабинет</span>
+            <h2 id="auth-title">С возвращением</h2>
+            <p class="muted" id="auth-subtitle">Войдите, чтобы продолжить работу с документами</p>
+            <div class="tabs auth-tabs">
+                <button class="tab active" data-auth-tab="login">Вход</button>
+                <button class="tab" data-auth-tab="register">Регистрация</button>
+            </div>
+            <form id="login-form" class="auth-form">
+                <div class="role-switch">
+                    <button type="button" class="active" data-role="client">Клиент</button>
+                    <button type="button" data-role="notary">Нотариус</button>
+                </div>
+                <div id="client-login-fields">
+                    <label>E-mail<input name="email" type="email" autocomplete="username" placeholder="name@example.ru" required></label>
+                </div>
+                <div id="notary-login-fields" hidden>
+                    <label>Логин<input name="login" autocomplete="username" value="notary"></label>
+                    <p class="field-hint">Демо-доступ: notary / notary123</p>
+                </div>
+                <label>Пароль<input name="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required></label>
+                <button class="button primary wide" type="submit">Войти в кабинет <span>→</span></button>
+            </form>
+            <form id="register-form" class="auth-form" hidden>
+                <label>Фамилия, имя, отчество<input name="fullName" placeholder="Иванова Анна Сергеевна" required></label>
+                <div class="form-row">
+                    <label>Паспорт<input name="passportData" placeholder="4510 123456" required></label>
+                    <label>Телефон<input name="phone" type="tel" placeholder="+7 900 000-00-00"></label>
+                </div>
+                <label>E-mail<input name="email" type="email" autocomplete="username" placeholder="name@example.ru" required></label>
+                <label>Пароль<input name="password" type="password" autocomplete="new-password" minlength="6" placeholder="Не менее 6 символов" required></label>
+                <button class="button primary wide" type="submit">Создать учётную запись <span>→</span></button>
+                <p class="field-hint">Регистрируясь, вы соглашаетесь на обработку данных для выполнения заявок.</p>
+            </form>
+        </div>
+    </section>
+</div>
+
+<div id="app-view" class="app-view" hidden>
+    <aside class="sidebar">
+        <div class="brand"><span class="brand-mark">Н</span><span>Нотариус<span class="brand-dot">.</span></span></div>
+        <div class="workspace-label" id="workspace-label">Кабинет клиента</div>
+        <nav id="main-nav"></nav>
+        <div class="sidebar-help">
+            <span class="help-icon">?</span>
+            <strong>Нужна помощь?</strong>
+            <p>Ответим на вопросы по работе сервиса</p>
+            <a href="mailto:support@example.ru">support@example.ru</a>
+        </div>
+        <div class="sidebar-user">
+            <div class="avatar" id="sidebar-avatar">К</div>
+            <div><strong id="sidebar-name">Пользователь</strong><small id="sidebar-email"></small></div>
+            <button class="icon-button" data-action="logout" title="Выйти">↗</button>
+        </div>
+    </aside>
+    <div class="app-main">
+        <header class="topbar">
+            <button class="icon-button mobile-menu" data-action="toggle-menu">☰</button>
+            <div><p class="topbar-caption" id="page-caption">Рабочее пространство</p><h2 id="page-title">Главная</h2></div>
+            <button class="button secondary new-application-top" data-action="new-application">+ Новая заявка</button>
+        </header>
+        <main id="page-content" class="page-content"></main>
+    </div>
+</div>
+
+<dialog id="modal" class="modal">
+    <div class="modal-header"><div><span class="eyebrow" id="modal-eyebrow">Нотариальная контора</span><h3 id="modal-title"></h3></div><button class="icon-button" data-action="close-modal" aria-label="Закрыть">×</button></div>
+    <div id="modal-body" class="modal-body"></div>
+</dialog>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<script src="/app.js"></script>
+</body>
+</html>
