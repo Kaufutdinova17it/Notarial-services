@@ -1,133 +1,202 @@
-# Система для клиентов нотариальной конторы — реализация паттернов проектирования
+# Система для клиентов нотариальной конторы — микросервисная архитектура
 
-Учебный проект по предметной области «Система для клиентов нотариальной конторы»
-(см. архитектурный план и проектное решение). Реализованы паттерны GoF и
-подключена база данных H2. Каждый паттерн закрывает конкретную задачу
-из предметной области.
+Учебный проект по предметной области «Система для клиентов нотариальной конторы».
+Реализация соответствует исправленному архитектурному плану: пять самостоятельных
+доменных сервисов, API Gateway, отдельная база PostgreSQL для каждого сервиса и
+событийная передача изменений заявок в сервис уведомлений. Паттерны GoF сохранены.
 
-## Реализованные паттерны
+## Архитектура
 
-### Порождающие
+| Модуль | Порт | Ответственность | База PostgreSQL |
+|---|---:|---|---|
+| `api-gateway` | 8080 | Единая точка входа, веб-интерфейс, сессии и роли | Не используется |
+| `client-service` | 8081 | Регистрация, авторизация и профили клиентов | `notary_client` |
+| `catalog-service` | 8082 | Каталог услуг и управление тарифами | `notary_catalog` |
+| `application-service` | 8083 | Заявки, документы, состояния и аудит | `notary_application` |
+| `payment-service` | 8084 | Расчёт стоимости и имитация оплаты | `notary_payment` |
+| `notification-service` | 8085 | Формирование и хранение уведомлений | `notary_notification` |
 
-| Паттерн | Классы | Задача из предметной области |
-|---|---|---|
-| **Строитель (Builder)** | `patterns/creational/builder/ApplicationBuilder` | Заявка создаётся пошагово: выбор услуги, примечание, прикрепление исходных документов. Строитель проверяет обязательные поля и собирает заявку со статусом «Создана» |
-| **Фабричный метод (Factory Method)** | `patterns/creational/factory/NotificationFactory` + 5 конкретных фабрик | По событию заявки (создание, смена статуса, готовность документов, отклонение, отмена) формируется уведомление со своим текстом. Базовый класс задаёт общий алгоритм, конкретные фабрики — текст сообщения |
-| **Одиночка (Singleton)** *(бонус)* | `db/Database` | Единственное подключение к базе данных H2, используется всеми репозиториями |
+Все базы находятся на одном PostgreSQL-сервере, по умолчанию `localhost:5432`.
+Таблицы и стандартный каталог услуг создаются автоматически при запуске сервисов.
+Прямого доступа к чужим таблицам и внешних ключей между базами нет.
 
-### Структурные
-
-| Паттерн | Классы | Задача из предметной области |
-|---|---|---|
-| **Адаптер (Adapter)** | `patterns/structural/adapter/PaymentGateway`, `ExternalPaymentStub`, `PaymentStubAdapter` | Платёжный сервис-заглушка имеет несовместимый интерфейс (сумма в копейках, числовые коды результата). Адаптер согласует его с интерфейсом `PaymentGateway`, используемым системой |
-| **Декоратор (Decorator)** | `patterns/structural/decorator/NotificationSender`, `EmailNotificationSender`, `LoggingNotificationSender`, `RetryNotificationSender` | Отправка уведомлений на e-mail динамически дополняется логированием и повторными попытками при ошибке (требование из проектного решения) |
-| **Фасад (Facade)** | `patterns/structural/facade/NotaryOfficeFacade` | Единая точка входа для клиентского приложения (аналог API Gateway из архитектурного плана): скрывает координацию ClientService, ServiceCatalogService, ApplicationService и PaymentService |
-
-### Поведенческие
-
-| Паттерн | Классы | Задача из предметной области |
-|---|---|---|
-| **Наблюдатель (Observer)** | `patterns/behavioral/observer/ApplicationEventPublisher`, `ApplicationListener`, `AuditLogListener`; подписчик — `NotificationService` | Событийное взаимодействие из архитектурного плана: после создания заявки или изменения её статуса ApplicationService публикует событие, NotificationService отправляет уведомление, AuditLogListener пишет в журнал аудита |
-| **Состояние (State)** | `patterns/behavioral/state/ApplicationState`, `CreatedState`, `InProgressState`, `ReadyState`, `TerminalState`, `ApplicationStateMachine` | Жизненный цикл заявки: Создана → В процессе → Готова → Получена (+ Отклонена, Отменена). Каждое состояние само определяет допустимые переходы; недопустимый переход вызывает исключение |
-| **Стратегия (Strategy)** | `patterns/behavioral/strategy/PricingStrategy`, `FixedPricingStrategy`, `PercentagePricingStrategy`, `PrivilegedDiscountStrategy` | Расчёт стоимости услуги: фиксированный тариф, процент от суммы сделки (удостоверение договоров), льготный тариф со скидкой. Алгоритм выбирается во время выполнения |
-
-## База данных
-
-Встраиваемая СУБД **H2** (файл `./data/notarydb`, создаётся при первом запуске).
-Схема соответствует модели данных из архитектурного плана:
-
-| Таблица | Сущность |
-|---|---|
-| `clients` | Client — клиент (id, fullName, passportData, phone, email, authData) |
-| `services` | Service — нотариальная услуга (id, name, description, price, pricingType) |
-| `applications` | Application — заявка (id, clientId, serviceId, status, note, createdAt) |
-| `documents` | Document — документ (id, applicationId, fileUrl, type, signed) |
-| `payments` | Payment — платёж (id, applicationId, amount, status, createdAt) |
-| `notifications` | Notification — уведомление (id, clientId, applicationId, type, message, status, createdAt) |
-| `audit_log` | Журнал аудита — протоколирование действий пользователя |
-
-Доступ к данным — через JDBC-репозитории (`repository/`).
-
-### Пример схемы PostgreSQL
-
-Файл `src/main/resources/db/postgresql/schema.sql` содержит PostgreSQL-версию
-схемы: ограничения, внешние ключи, индексы, комментарии и демонстрационные данные.
-Для создания примера в отдельной базе:
-
-```bash
-createdb -U postgres notary_office
-psql -U postgres -d notary_office -f src/main/resources/db/postgresql/schema.sql
-```
-
-Скрипт можно повторять в той же базе: таблицы и индексы создаются при их
-отсутствии, а демонстрационные записи не дублируются. Значения `auth_data` в
-примере являются заполнителями и не предназначены для входа в приложение.
-Основное приложение по-прежнему использует H2; этот скрипт не меняет конфигурацию.
-
-## Пользовательский интерфейс и API
-
-Браузерное приложение реализует функции архитектурного плана без дополнительных
-библиотек: встроенный HTTP-сервер Java раздаёт HTML/CSS/JavaScript и REST API.
-`NotaryWebServer` выступает API Gateway и обращается только к `NotaryOfficeFacade`.
-
-В кабинете клиента доступны регистрация и авторизация, редактирование профиля,
-каталог услуг, создание и отмена заявки, загрузка и скачивание документов,
-подписание готовых документов, имитация оплаты, подтверждение получения и история
-уведомлений. В кабинете нотариуса доступны все заявки, изменение их статусов,
-формирование готовых документов, CRUD услуг и журнал аудита.
-
-Пароли клиентов хранятся в виде PBKDF2-хешей. HTTP-сессии разделяют роли клиента
-и нотариуса; API проверяет владельца заявки. Файлы сохраняются в `data/uploads`,
-а сведения о них — в H2. Платёж и отправка e-mail остаются учебными заглушками,
-реальные деньги и письма через внешние сервисы не передаются.
+Клиент обращается только к API Gateway. Между сервисами используется HTTP/JSON.
+После создания заявки или смены статуса ApplicationService отправляет событие в
+`POST /api/events/applications` сервиса уведомлений. Платёжный шлюз и отправка
+e-mail остаются учебными заглушками.
 
 ## Структура проекта
 
-```
-src/main/java/com/example/notary/
-├── Main.java                        — консольная демонстрация паттернов
-├── WebApplication.java              — запуск веб-приложения
-├── db/Database.java                 — Singleton, подключение и схема БД
-├── model/                           — сущности и перечисления (статусы, типы)
-├── repository/                      — JDBC-репозитории для всех таблиц
-├── service/                         — ClientService, ServiceCatalogService,
-│                                      ApplicationService, PaymentService,
-│                                      NotificationService
-├── web/                             — HTTP API Gateway и JSON-сериализация
-└── patterns/
-    ├── creational/                  — builder/, factory/
-    ├── structural/                  — adapter/, decorator/, facade/
-    └── behavioral/                  — observer/, state/, strategy/
-
-src/main/resources/web/              — интерфейс (HTML, CSS, JavaScript)
+```text
+notary-office-patterns/
+├── pom.xml                         — родительский Maven-проект
+├── common/                         — модели, JSON, JDBC и HTTP-инфраструктура
+├── client-service/                 — ClientService и ClientRepository
+├── catalog-service/                — ServiceCatalogService и ServiceRepository
+├── application-service/            — ApplicationService, документы и аудит
+├── payment-service/                — PaymentService и платёжный адаптер
+├── notification-service/           — NotificationService и отправители
+├── api-gateway/                    — HTTP Gateway и ресурсы web/
+├── launcher/                       — запуск JAR как отдельных процессов
+└── db/postgresql/
+    └── create-databases.sql        — создание пяти баз на одном сервере
 ```
 
-## Запуск веб-приложения
+## 1. Создание баз в DataGrip
 
-Требования: JDK 17+, Maven 3.6+.
+Требуется запущенный PostgreSQL-сервер и пользователь с правом создавать базы.
 
-```bash
-mvn compile exec:java
+1. В DataGrip выберите **Database → New → Data Source → PostgreSQL**.
+2. Подключитесь к серверу, указав хост `localhost`, порт `5432`, пользователя и пароль.
+   Для первого подключения можно выбрать стандартную базу `postgres`.
+3. Откройте файл `db/postgresql/create-databases.sql` в консоли запросов и выполните
+   его целиком:
+
+   ```sql
+   CREATE DATABASE notary_client;
+   CREATE DATABASE notary_catalog;
+   CREATE DATABASE notary_application;
+   CREATE DATABASE notary_payment;
+   CREATE DATABASE notary_notification;
+   ```
+
+   Скрипт предназначен для однократного выполнения. Если базы уже существуют,
+   повторно создавать их не нужно.
+4. Обновите список баз в DataGrip. Для просмотра таблиц можно добавить каждую базу
+   как отдельный Data Source либо раскрыть их внутри существующего подключения.
+
+После запуска приложения в базах появятся таблицы `clients`, `services`,
+`applications`, `documents`, `audit_log`, `payments` и `notifications` — каждая в
+базе своего микросервиса.
+
+## 2. Настройка подключения приложения
+
+По умолчанию используются:
+
+```text
+DB_TYPE=postgresql
+POSTGRES_SERVER_URL=jdbc:postgresql://localhost:5432
+POSTGRES_USER=postgres
 ```
 
-Откройте [http://localhost:8080](http://localhost:8080). Клиент может создать
-учётную запись на вкладке «Регистрация». Демо-доступ нотариуса: `notary` /
-`notary123`. Для другого порта передайте его аргументом, например
-`-Dexec.args=8090`. Логин и пароль нотариуса можно изменить переменными среды
-`NOTARY_LOGIN` и `NOTARY_PASSWORD`.
+Пароль необходимо задать через `POSTGRES_PASSWORD`. Пример для PowerShell:
 
-## Консольная демонстрация паттернов
-
-```bash
-mvn compile exec:java -Dexec.mainClass=com.example.notary.Main
+```powershell
+$env:POSTGRES_USER = "postgres"
+$env:POSTGRES_PASSWORD = "ваш_пароль"
 ```
 
-Сценарий `Main` регистрирует клиентов, создаёт заявки, демонстрирует события и
-уведомления, смену состояний, расчёт тарифов, платёжную заглушку, обработку
-недопустимого перехода и чтение итоговых данных из H2.
+Если PostgreSQL работает на другом компьютере или порту:
 
-## Проверка
+```powershell
+$env:POSTGRES_SERVER_URL = "jdbc:postgresql://192.168.1.10:5432"
+```
+
+При необходимости можно переопределить URL каждой базы через `CLIENT_DB_URL`,
+`CATALOG_DB_URL`, `APPLICATION_DB_URL`, `PAYMENT_DB_URL`, `NOTIFICATION_DB_URL`.
+Переменные среды наследуются всеми процессами, которые запускает launcher. Пароль в
+код и SQL-файлы записывать не требуется.
+
+## 3. Запуск всего приложения
+
+Требования: JDK 17+, Maven 3.6+ и PostgreSQL. В том же терминале, где заданы
+переменные среды, выполните:
 
 ```bash
 mvn clean package
+java -jar launcher/target/notary-launcher-1.0.0.jar
 ```
+
+Launcher последовательно запускает шесть исполняемых JAR как независимые процессы,
+проверяет их готовность и останавливает при завершении. Откройте
+[http://localhost:8080](http://localhost:8080). Демо-доступ нотариуса:
+`notary` / `notary123`.
+
+Старая монолитная база `data/notarydb` не удаляется, но PostgreSQL-конфигурацией не
+используется. Автоматическая миграция её записей не выполняется.
+
+## Независимый запуск сервисов
+
+После `mvn clean package` каждый сервис можно запустить отдельно:
+
+```bash
+java -jar client-service/target/client-service-1.0.0.jar
+java -jar catalog-service/target/catalog-service-1.0.0.jar
+java -jar notification-service/target/notification-service-1.0.0.jar
+java -jar application-service/target/application-service-1.0.0.jar
+java -jar payment-service/target/payment-service-1.0.0.jar
+java -jar api-gateway/target/api-gateway-1.0.0.jar
+```
+
+Порты задаются первым аргументом или переменными `CLIENT_SERVICE_PORT`,
+`CATALOG_SERVICE_PORT`, `APPLICATION_SERVICE_PORT`, `PAYMENT_SERVICE_PORT`,
+`NOTIFICATION_SERVICE_PORT`, `GATEWAY_PORT`. Адреса зависимостей настраиваются через
+`CLIENT_SERVICE_URL`, `CATALOG_SERVICE_URL`, `APPLICATION_SERVICE_URL`,
+`PAYMENT_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`. Каталог файлов —
+`NOTARY_UPLOADS_DIR`. Логин и пароль нотариуса — `NOTARY_LOGIN` и `NOTARY_PASSWORD`.
+
+### Режим H2 для локальной проверки
+
+PostgreSQL является режимом по умолчанию. Для временного возврата к файловым базам
+H2 задайте `DB_TYPE=h2`. Базы будут созданы в каталоге `NOTARY_DATA_DIR` (по
+умолчанию `data`). Этот режим не синхронизируется с PostgreSQL.
+
+## Пользовательский интерфейс и API
+
+Внешние маршруты монолитного приложения сохранены. Доступны регистрация и
+авторизация, редактирование профиля, каталог услуг, создание и отмена заявки,
+загрузка и скачивание документов, подписание, имитация оплаты, подтверждение
+получения и история уведомлений. Нотариус может управлять заявками, статусами,
+документами, услугами и журналом аудита.
+
+Пароли клиентов хранятся в виде PBKDF2-хешей. Gateway разделяет роли и проверяет
+владельца заявки. Файлы сохраняются в `data/uploads`, а их метаданные — только в
+базе ApplicationService.
+
+## Реализованные паттерны
+
+| Паттерн | Расположение | Назначение |
+|---|---|---|
+| **Builder** | `application-service`, `ApplicationBuilder` | Пошаговая сборка заявки |
+| **Factory Method** | `notification-service`, `NotificationFactory` | Текст уведомления по типу события |
+| **Singleton** | `common`, `Database` | Одно соединение с собственной базой внутри сервиса |
+| **Adapter** | `payment-service`, `PaymentStubAdapter` | Согласование платёжной заглушки с API |
+| **Decorator** | `notification-service`, отправители | Логирование и повторные попытки отправки |
+| **Facade** | `api-gateway`, `NotaryWebServer` | Единый интерфейс поверх доменных сервисов |
+| **Observer** | `application-service`, издатель и подписчики | Аудит и события уведомлений |
+| **State** | `application-service`, `ApplicationStateMachine` | Допустимые переходы заявки |
+| **Strategy** | `payment-service`, стратегии тарификации | Расчёт разных видов тарифов |
+
+Подробности приведены в `ОТЧЕТ_ПО_ПРОЕКТУ.md`.
+
+## Unit-тестирование
+
+В проекте используются JUnit 5 и Mockito. Зависимости от баз данных, HTTP и платёжного
+шлюза заменяются моками, поэтому для unit-тестов PostgreSQL и запущенные микросервисы
+не нужны. Тесты следуют структуре Arrange–Act–Assert и содержат положительные,
+пустые, граничные и исключительные сценарии.
+
+| Микросервис | Тестовый класс | Проверяемые сценарии |
+|---|---|---|
+| ClientService | `ClientServiceTest` | Регистрация, вход, пустое ФИО, пароли из 5 и 6 символов, повторный e-mail, неверный пароль, отсутствующий клиент |
+| PaymentService | `PaymentServiceTest` | Фиксированный и процентный тарифы, нулевой тариф, отсутствующие заявка и сумма сделки, ошибка шлюза, отсутствующий платёж |
+
+Запуск всех тестов:
+
+```bash
+mvn clean test
+```
+
+Запуск тестов отдельного микросервиса:
+
+```bash
+mvn -pl client-service -am test
+mvn -pl payment-service -am test
+```
+
+Отчёты Maven Surefire сохраняются в `target/surefire-reports` соответствующего
+модуля. Команда `mvn clean package` также выполняет все тесты перед сборкой JAR.
+
+## Проверка запущенного приложения
+
+Проверка готовности каждого процесса: `GET http://localhost:{port}/api/health`.
